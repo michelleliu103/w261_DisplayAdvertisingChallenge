@@ -6,4 +6,5 @@
 *.output
 *.zip
 data/
+models/
 tree-model/
