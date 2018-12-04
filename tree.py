@@ -283,6 +283,9 @@ def result_adder(results1, results2):
             [results1[1][0] + results2[1][0], results1[1][1] + results2[1][1]]]
 
 def to_gini(results):
+    """
+    calculate the gini impurities for each split, along with the weighted average of gini impurities
+    """
     results1, results2 = results
     stats1 = stats(results1)
     stats2 = stats(results2)
@@ -292,10 +295,15 @@ def to_gini(results):
     return stats1[0] / total * stats1[2] + stats2[0] / total * stats2[2], stats1, stats2
 
 def shift_key(pair):
+    """
+    take a key-value pair where the key is a 3-tuple and convert to a single key.
+    the other 2 former-keys get merged into the value
+    """
     tuple_key, tuple_data = pair
     return (tuple_key[0], (tuple_key[1:],) + tuple_data)
 
 def get_purest_split(data1, data2):
+    """a reducer that just picks the smaller weighted gini impurity"""
     if data1[1] < data2[1]:
         return data1
     return data2
