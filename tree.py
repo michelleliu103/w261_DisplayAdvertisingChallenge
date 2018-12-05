@@ -150,7 +150,7 @@ class DecisionTreeBinaryClassifier:
             .groupByKey() \
             .mapValues(partial(to_bins, self.max_bins)) \
             .collectAsMap()
-        treeRDD = dataRDD.map(lambda pair: (pair[0], discretize(continuous_bins, pair[1])))
+        treeRDD = dataRDD.map(lambda pair: (pair[0], discretize(continuous_bins, pair[1]))).persist()
         self.continuous_bins = continuous_bins
         
         # initialize the decision tree
@@ -210,6 +210,9 @@ class DecisionTreeBinaryClassifier:
                 frontier = []
             else:
                 frontier = new_frontier
+
+        # remove from cache before returning
+        treeRDD.unpersist()
     
     def predict(self, dataRDD):
         """take a data point and get the probability of being in the positive class. only do this after training"""
