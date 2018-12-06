@@ -1,12 +1,5 @@
 import numpy as np
 
-def weighted_calc(groups, func):
-    """performs a func on several groups, and gets the weighted average of the results"""
-    totals = np.array([np.sum(group) for group in groups])
-    weights = totals / np.sum(totals)
-    values = [func(group) for group in groups]
-    return np.sum(weights * values)
-
 def gini_impurity(group):
     n = np.sum(group)
     if n == 0:
@@ -14,7 +7,10 @@ def gini_impurity(group):
     return 1 - np.sum((np.array(group) / n) ** 2)
 
 def stats(label_count):
-    """calculates total count (n), the probability of the positive class, and the gini impurity"""
+    """
+    calculates total count (n), the probability of the positive class, and the gini impurity
+    the input is a list of 2, the counts for each label
+    """
     n = np.sum(label_count)
     probability = label_count[1] / n
     gini = gini_impurity(label_count)

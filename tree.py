@@ -23,7 +23,9 @@ class TreeNode:
         left: the left child TreeNode. `None` for a leaf node
         right: the right child TreeNode
         parent: the parent TreeNode. `None` for the root
-        ranges: Dict[int -> (int, int)] A dict that maps a feature index to its range of potential values
+        ranges: Dict[int -> (int, int)] A dict that maps a feature index to its range of potential values.
+            Every time a node is split, its children have a reduced potential range of values for that feature
+            which is being split on. Keep track of this to narrow down candidate splits in the future.
     """
 
     def __init__(self, id, n, gini_impurity, probability):
@@ -168,12 +170,20 @@ class DecisionTreeBinaryClassifier:
             for node in frontier:
                 candidate_splits[node.id] = gen_candidate_splits(node, self.num_features, self.feature_subset_strategy)
 
-            # collect statistics about each of the proposed splits
+            # collect statistics about each of the proposed splits.
+            # for each training example, take all the candidate splits and emit a key-value pair indicating
+            # how that example would get classified. the key-value pair looks like this
+            # (node-ID, feature-index, split-value): [[1, 0], [0, 0]]
+            # then those classifications are reduced to add them up. so the values become [[negative-examples in left split, positive-examples in left split], [neg-ex in right split, pos-ex in right split]]
+            # finally, the label counts are mapped to statistics in the form:
+            # (node-ID, feature-index, split-value): (weighted_gini, (total_n_left, probability_positive_left, gini_left), (total_n_right, probability_positive_right, gini_right)
             statsRDD = treeRDD.flatMap(partial(split_statistics, tree_root, candidate_splits)) \
                 .reduceByKey(result_adder) \
                 .mapValues(to_gini)
             
             # find the best split for each node in the frontier (lowest gini impurity)
+            # the key is converted from (node-ID, feature-index, split-value) to just node-ID
+            # this allows us to reduce and get for each node ID only the split with the lowest gini impurity
             best_splits = statsRDD.map(shift_key) \
                 .reduceByKey(get_purest_split) \
                 .collectAsMap()
@@ -232,7 +242,7 @@ def sample_fraction_for_accurate_splits(total_num_rows, max_bins):
     return required_samples / total_num_rows
 
 def spread_row(row):
-    """for use by flatMap to make a separate row for each feature"""
+    """for use by flatMap to make a separate row for each feature, instead of one row per training example"""
     return [ (i, val) for i, val in enumerate(row[1]) if val != 0 ]
 
 def to_bins(max_bins, sample):
@@ -256,6 +266,8 @@ def gen_candidate_splits(node, num_feats, feature_subset_strategy):
     else:
         raise ValueError("invalid feature_subset_strategy: {}".format(feature_subset_strategy))
     for i in loop_range:
+        # look up the range of potential values for this particular feature at this node. it might not be
+        # the full range of values if we split on this feature already in a previous level.
         feat_range = node.feat_range(i)
         if feat_range[1] - feat_range[0] > 1:
             candidates[i] = list(range(*feat_range))
@@ -264,7 +276,9 @@ def gen_candidate_splits(node, num_feats, feature_subset_strategy):
 def split_statistics(tree_root, candidate_splits, pair):
     """
     see which node a data point is assigned to, and see how the class assignments would be
-    at each split we are considering
+    at each split we are considering. encodes the assignment as a nested list of length 2 each
+    [[1, 0], [0, 0]] all zeros except for a 1. this means the example is negative and it was sent
+    to the left split.
     """
     label, feat_vector = pair
     node_assignment = tree_root.get_assigned_node_id(feat_vector)
@@ -282,12 +296,13 @@ def split_statistics(tree_root, candidate_splits, pair):
             yield (node_assignment, feat_idx, split_val), results
 
 def result_adder(results1, results2):
+    # just add up all the values per-split per-class
     return [[results1[0][0] + results2[0][0], results1[0][1] + results2[0][1]],
             [results1[1][0] + results2[1][0], results1[1][1] + results2[1][1]]]
 
 def to_gini(results):
     """
-    calculate the gini impurities for each split, along with the weighted average of gini impurities
+    calculate the stats (including gini impurities for each split), along with the weighted average of gini impurities
     """
     results1, results2 = results
     stats1 = stats(results1)
