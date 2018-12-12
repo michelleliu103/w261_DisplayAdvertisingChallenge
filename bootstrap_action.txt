@@ -1,0 +1,4 @@
+#!/bin/bash
+
+sudo easy_install-3.4 pip
+sudo /usr/local/bin/pip3 install scikit-learn pandas pyspark missingno matplotlib sklearn scipy seaborn 
